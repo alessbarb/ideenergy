@@ -1,0 +1,34 @@
+name: Temporary format log-redaction branch
+
+on:
+  push:
+    branches:
+      - fix/log-redaction
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/log-redaction
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: python -m pip install --upgrade pre-commit
+      - name: Apply repository formatting
+        run: pre-commit run --from-ref origin/main --to-ref HEAD || true
+      - name: Commit formatting changes
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ideenergy/client.py tests/test_privacy.py
+          git commit -m "style: apply repository formatting"
+          git push origin HEAD:fix/log-redaction
