@@ -10,8 +10,14 @@
 import unittest
 from unittest.mock import Mock
 
-from ideenergy import Client, CommandError, InvalidContractError, InvalidData
-from ideenergy import RequestFailedError, UserExpiredError
+from ideenergy import (
+    Client,
+    CommandError,
+    InvalidContractError,
+    InvalidData,
+    RequestFailedError,
+    UserExpiredError,
+)
 
 
 class TestPrivacySafeStrings(unittest.TestCase):
