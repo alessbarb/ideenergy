@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import json
 import logging
@@ -66,6 +67,7 @@ else:
 
 SESSION_TIMEOUT = 900
 SESSION_AUTO_REFRESH = True
+AUTHENTICATION_HTTP_STATUSES = frozenset({401, 403})
 
 # Define TypeVars to preserve the signature and return type
 P = ParamSpec("P")
@@ -77,11 +79,20 @@ def auth_required(
 ) -> Callable[Concatenate[Client, P], Awaitable[R]]:
     @functools.wraps(fn)
     async def _wrap(client: Client, *args, **kwargs):
-        if client._session_auto_refresh is True and client.is_logged is False:
-            await client.login()
+        await client._ensure_session()
 
-        # await client.renew_session()
-        return await fn(client, *args, **kwargs)
+        try:
+            return await fn(client, *args, **kwargs)
+        except RequestFailedError as exc:
+            if (
+                client._session_auto_refresh is not True
+                or exc.status not in AUTHENTICATION_HTTP_STATUSES
+            ):
+                raise
+
+            client._invalidate_session()
+            await client._ensure_session()
+            return await fn(client, *args, **kwargs)
 
     return _wrap
 
@@ -147,6 +158,7 @@ class Client:
         self._session_auto_refresh = session_auto_refresh
 
         self._login_ts: datetime | None = None
+        self._auth_lock = asyncio.Lock()
 
     def __str__(self) -> str:
         return f"{self.username}" + (f"/{self.contract}" if self.contract else "")
@@ -189,6 +201,18 @@ class Client:
     @property
     def session_auto_refresh(self) -> bool:
         return self._session_auto_refresh
+
+    def _invalidate_session(self) -> None:
+        self._login_ts = None
+
+    async def _ensure_session(self) -> None:
+        if self._session_auto_refresh is not True or self.is_logged:
+            return
+
+        async with self._auth_lock:
+            if self.is_logged:
+                return
+            await self.login()
 
     #
     # Requests
@@ -265,26 +289,25 @@ class Client:
             LOGGER.error(f"{self}: auth failed, invalid data")
             raise InvalidData(data)
 
-        if data.get("success", "false") != "true":
-            LOGGER.error(f"{self}: auth failed, no success")
-            raise CommandError(data)
-
-        if data.get("success", "") == "userExpired":
+        result = data.get("success", "false")
+        if result == "userExpired":
             LOGGER.error(f"{self}: auth failed, user session expired")
             raise UserExpiredError(data)
+
+        if result != "true":
+            LOGGER.error(f"{self}: auth failed, no success")
+            raise AuthenticationError(data)
 
         self._login_ts = datetime.now()
         LOGGER.debug(f"{self}: succesfully authenticaded")
 
         if self._contract:
-            await self.select_contract(self._contract)
+            await self._select_contract(self._contract)
 
-    # async def verify_is_logged(self) -> bool:
-    #     sess_info = await self.renew_session()
-    #     return bool(sess_info.get("usSes"))
-
+    @auth_required
     async def renew_session(self) -> dict:
         ret = await self.request_json("POST", _KEEP_SESSION)
+        self._login_ts = datetime.now()
         LOGGER.debug(f"{self}: session renewed")
 
         return ret
@@ -320,8 +343,7 @@ class Client:
         LOGGER.debug(f"{self}: contract list fetched")
         return data["contratos"]
 
-    @auth_required
-    async def select_contract(self, contract_id: str) -> None:
+    async def _select_contract(self, contract_id: str) -> None:
         data = await self.request_json(
             "GET", _CONTRACT_SELECTION_ENDPOINT + contract_id
         )
@@ -331,6 +353,10 @@ class Client:
 
         LOGGER.debug(f"{self}: contract '{contract_id}' selected")
         self._contract = contract_id
+
+    @auth_required
+    async def select_contract(self, contract_id: str) -> None:
+        await self._select_contract(contract_id)
 
     @auth_required
     async def get_measure(self) -> Measure:
@@ -376,6 +402,7 @@ class Client:
         ret = parsers.parse_in_progress_consumption(data)
         return ret
 
+    @auth_required
     async def get_historical_generation(
         self, start: datetime | None = None, end: datetime | None = None
     ) -> HistoricalGeneration:
@@ -400,12 +427,12 @@ class Client:
     #     start = min([start, end])
     #     end = max([start, end])
     #     url = url_template.format(start=start, end=end)
-
+    #
     #     data = await self.request_json("GET", url, encoding="iso-8859-1")
-
+    #
     #     base_date = datetime(start.year, start.month, start.day)
     #     ret = parsers.parser_generic_historical_data(data, base_date)
-
+    #
     #     return ret
 
     @auth_required
@@ -447,6 +474,10 @@ class RequestFailedError(ClientError):
     def __init__(self, response):
         self.response = response
 
+    @property
+    def status(self) -> int:
+        return self.response.status
+
     def __str__(self):
         return (
             f"Invalid response for '{self.response.url}': "
@@ -460,6 +491,10 @@ class CommandError(ClientError):
 
     def __str__(self):
         return f"Command not succesful: {self.data!r}"
+
+
+class AuthenticationError(CommandError):
+    """Authentication was rejected by i-DE."""
 
 
 class InvalidData(ClientError):
@@ -478,10 +513,7 @@ class InvalidContractError(ClientError):
         return f"Invalid contract code: {self.data!r}"
 
 
-class UserExpiredError(ClientError):
-    def __init__(self, data):
-        self.data = data
-
+class UserExpiredError(AuthenticationError):
     def __str__(self):
         return f"User expired: {self.data!r}"
 
