@@ -282,7 +282,9 @@ class Client:
         data = await self.request_json("POST", _LOGIN_ENDPOINT, json=payload)
 
         if not isinstance(data, dict):
-            LOGGER.error(f"{self}: authentication failed because the response was invalid")
+            LOGGER.error(
+                f"{self}: authentication failed because the response was invalid"
+            )
             raise InvalidData(data)
 
         result = data.get("success", "false")
