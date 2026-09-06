@@ -69,6 +69,7 @@ SESSION_TIMEOUT = 900
 SESSION_AUTO_REFRESH = True
 AUTHENTICATION_HTTP_STATUSES = frozenset({401, 403})
 
+# Define TypeVars to preserve the signature and return type
 P = ParamSpec("P")
 R = TypeVar("R")
 
@@ -129,6 +130,12 @@ class Client:
     # Pragma: no-cache
     # Cache-Control: no-cache
     # TE: trailers
+    #
+    # _HEADERS = {
+    #     "dispositivo": "desktop",
+    #     "AppVersion": "v2",
+    #     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:145.0) Gecko/20100101 Firefox/145.0",
+    # }
 
     def __init__(
         self,
@@ -158,6 +165,10 @@ class Client:
 
     def __repr__(self) -> str:
         return f"<ideenergy.Client contract_configured={self.contract is not None}>"
+
+    #
+    # Some properties
+    #
 
     @property
     def username(self) -> str:
@@ -199,6 +210,10 @@ class Client:
                 return
             await self.login()
 
+    #
+    # Requests
+    #
+
     async def _request(self, method: str, url: str, **kwargs) -> aiohttp.ClientResponse:
         headers = kwargs.get("headers", {})
         headers.update(self._HEADERS)
@@ -228,7 +243,12 @@ class Client:
         self, method: str, url: str, encoding: str = "utf-8", **kwargs
     ) -> dict[Any, Any]:
         buff = await self.request_bytes(method, url, **kwargs)
-        return json.loads(buff.decode(encoding))
+        data = json.loads(buff.decode(encoding))
+        return data
+
+    #
+    # Methods
+    #
 
     async def login(self) -> None:
         payload = [
@@ -243,6 +263,20 @@ class Client:
             "s",
             "",
         ]
+        # payload = [
+        #     self.username,
+        #     self.password,
+        #     None,
+        #     "Linux -",
+        #     "PC",
+        #     "Firefox 145.0",
+        #     "0",
+        #     "",
+        #     "s",
+        #     None,
+        #     None,
+        #     None,
+        # ]
 
         await self.request_bytes("GET", _BASE_URL)
         data = await self.request_json("POST", _LOGIN_ENDPOINT, json=payload)
@@ -271,6 +305,7 @@ class Client:
         ret = await self.request_json("POST", _KEEP_SESSION)
         self._login_ts = datetime.now()
         LOGGER.debug(f"{self}: session renewed")
+
         return ret
 
     @auth_required
@@ -280,6 +315,7 @@ class Client:
             LOGGER.debug(f"{self}: ICP is ready")
         else:
             LOGGER.debug(f"{self}: ICP is NOT ready")
+
         return ret
 
     @auth_required
@@ -308,7 +344,7 @@ class Client:
             "GET", _CONTRACT_SELECTION_ENDPOINT + contract_id
         )
         if not data.get("success", False):
-            LOGGER.error(f"{self}: contract selection failed")
+            LOGGER.error(f"{self}: contract select failed")
             raise InvalidContractError(contract_id)
 
         LOGGER.debug(f"{self}: contract selected")
@@ -320,7 +356,7 @@ class Client:
 
     @auth_required
     async def get_measure(self) -> Measure:
-        LOGGER.info(f"{self}: requesting data from the ICP; this may take up to a minute")
+        LOGGER.info(f"{self}: requesting data to the ICP, may take up to a minute.")
         data = await self.request_json("GET", _MEASURE_ENDPOINT)
 
         if not data.get("codSolicitudTGT"):
@@ -331,7 +367,8 @@ class Client:
             accumulate=int(data["valLecturaContador"]),
             instant=float(data["valMagnitud"]),
         )
-        LOGGER.debug(f"{self}: measure fetched successfully")
+        LOGGER.debug(f"{self}: measure fetched succesfully")
+
         return ret
 
     @auth_required
@@ -350,14 +387,16 @@ class Client:
         ret = parsers.parse_historical_consumption(data)
         ret.periods = [x for x in ret.periods if x.start >= start and x.end <= end]
 
-        LOGGER.debug(f"{self}: historical consumption fetched successfully")
+        LOGGER.debug(f"{self}: historical consumption fetched succesfully")
+
         return ret
 
     @auth_required
     async def get_in_progress_consumption(self) -> InProgressConsumption:
-        LOGGER.info(f"{self}: requesting data from the ICP; this may take up to a minute")
+        LOGGER.info(f"{self}: requesting data to the ICP, may take up to a minute.")
         data = await self.request_json("GET", _CONSUMPTION_IN_PROGRESS_ENDPOINT)
-        return parsers.parse_in_progress_consumption(data)
+        ret = parsers.parse_in_progress_consumption(data)
+        return ret
 
     @auth_required
     async def get_historical_generation(
@@ -373,8 +412,24 @@ class Client:
         data = await self.request_json("GET", url, encoding="iso-8859-1")
         ret = parsers.parse_historical_generation(data)
 
-        LOGGER.debug(f"{self}: historical generation fetched successfully")
+        LOGGER.debug(f"{self}: historical generation fetched succesfully")
+
         return ret
+
+    # @auth_required
+    # async def _get_historical_generic_data(
+    #     self, url_template: str, start: datetime, end: datetime
+    # ) -> Dict[Any, Any]:
+    #     start = min([start, end])
+    #     end = max([start, end])
+    #     url = url_template.format(start=start, end=end)
+    #
+    #     data = await self.request_json("GET", url, encoding="iso-8859-1")
+    #
+    #     base_date = datetime(start.year, start.month, start.day)
+    #     ret = parsers.parser_generic_historical_data(data, base_date)
+    #
+    #     return ret
 
     @auth_required
     async def get_historical_power_demand(self) -> HistoricalPowerDemand:
@@ -384,12 +439,14 @@ class Client:
 
             data = await client.request_json("GET", url)
             assert data.get("resultado") == "correcto"
+
             return data
 
         limits = await _get_available_interval(self)
         if limits.get("resultado") != "correcto":
             raise CommandError(limits)
 
+        # range can't be wider than a year
         limits["fecMin"] = (
             datetime.strptime(limits["fecMax"], "%d-%m-%Y%H:%M:%S")
             - timedelta(days=365)
@@ -400,7 +457,8 @@ class Client:
 
         ret = parsers.parse_historical_power_demand_data(data)
 
-        LOGGER.debug(f"{self}: historical power demand fetched successfully")
+        LOGGER.debug(f"{self}: historical power demand fetched succesfully")
+
         return ret
 
 
