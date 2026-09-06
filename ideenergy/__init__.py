@@ -18,6 +18,7 @@
 
 from .client import (
     AuthenticationError,
+    CircuitOpenError,
     Client,
     ClientError,
     CommandError,
@@ -43,6 +44,7 @@ from .types import (
 
 __all__ = [
     "AuthenticationError",
+    "CircuitOpenError",
     "Client",
     "ClientError",
     "CommandError",

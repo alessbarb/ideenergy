@@ -68,6 +68,9 @@ else:
 SESSION_TIMEOUT = 900
 SESSION_AUTO_REFRESH = True
 AUTHENTICATION_HTTP_STATUSES = frozenset({401, 403})
+CIRCUIT_BREAKER_HTTP_STATUSES = frozenset({401, 403, 429, 500, 502, 503, 504})
+CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3
+CIRCUIT_BREAKER_TIMEOUT = timedelta(minutes=15)
 
 # Define TypeVars to preserve the signature and return type
 P = ParamSpec("P")
@@ -79,20 +82,28 @@ def auth_required(
 ) -> Callable[Concatenate[Client, P], Awaitable[R]]:
     @functools.wraps(fn)
     async def _wrap(client: Client, *args, **kwargs):
-        await client._ensure_session()
+        client._raise_if_circuit_open()
 
         try:
-            return await fn(client, *args, **kwargs)
-        except RequestFailedError as exc:
-            if (
-                client._session_auto_refresh is not True
-                or exc.status not in AUTHENTICATION_HTTP_STATUSES
-            ):
-                raise
-
-            client._invalidate_session()
             await client._ensure_session()
-            return await fn(client, *args, **kwargs)
+            try:
+                result = await fn(client, *args, **kwargs)
+            except RequestFailedError as exc:
+                if (
+                    client._session_auto_refresh is not True
+                    or exc.status not in AUTHENTICATION_HTTP_STATUSES
+                ):
+                    raise
+
+                client._invalidate_session()
+                await client._ensure_session()
+                result = await fn(client, *args, **kwargs)
+        except RequestFailedError as exc:
+            client._record_operation_failure(exc)
+            raise
+        else:
+            client._record_operation_success()
+            return result
 
     return _wrap
 
@@ -159,6 +170,8 @@ class Client:
 
         self._login_ts: datetime | None = None
         self._auth_lock = asyncio.Lock()
+        self._circuit_failure_count = 0
+        self._circuit_open_until: datetime | None = None
 
     def __str__(self) -> str:
         return "ideenergy.Client"
@@ -200,6 +213,29 @@ class Client:
 
     def _invalidate_session(self) -> None:
         self._login_ts = None
+
+    def _raise_if_circuit_open(self) -> None:
+        if self._circuit_open_until is None:
+            return
+
+        now = datetime.now()
+        if now >= self._circuit_open_until:
+            self._record_operation_success()
+            return
+
+        raise CircuitOpenError(self._circuit_open_until - now)
+
+    def _record_operation_failure(self, exc: RequestFailedError) -> None:
+        if exc.status not in CIRCUIT_BREAKER_HTTP_STATUSES:
+            return
+
+        self._circuit_failure_count += 1
+        if self._circuit_failure_count >= CIRCUIT_BREAKER_FAILURE_THRESHOLD:
+            self._circuit_open_until = datetime.now() + CIRCUIT_BREAKER_TIMEOUT
+
+    def _record_operation_success(self) -> None:
+        self._circuit_failure_count = 0
+        self._circuit_open_until = None
 
     async def _ensure_session(self) -> None:
         if self._session_auto_refresh is not True or self.is_logged:
@@ -466,6 +502,15 @@ class Client:
 
 class ClientError(Exception):
     pass
+
+
+class CircuitOpenError(ClientError):
+    def __init__(self, retry_after: timedelta):
+        self.retry_after = retry_after
+
+    def __str__(self):
+        seconds = max(0, int(self.retry_after.total_seconds()))
+        return f"i-DE request circuit is open for {seconds} seconds"
 
 
 class RequestFailedError(ClientError):
