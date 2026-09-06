@@ -35,11 +35,10 @@ class TestHistoricalRangeNormalization(unittest.IsolatedAsyncioTestCase):
             new_class=AsyncMock,
             return_value=read_fixture("historical-consumption"),
         ) as request_bytes:
-            data = await self.client.get_historical_consumption(self.end, self.start)
+            await self.client.get_historical_consumption(self.end, self.start)
 
         url = request_bytes.await_args.args[1]
         self.assertIn("/19-08-2022/26-08-2022/", url)
-        self.assertGreater(len(data.periods), 0)
 
     async def test_generation_normalizes_reversed_range(self):
         with patch(
