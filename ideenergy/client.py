@@ -161,14 +161,10 @@ class Client:
         self._auth_lock = asyncio.Lock()
 
     def __str__(self) -> str:
-        return f"{self.username}" + (f"/{self.contract}" if self.contract else "")
+        return "ideenergy.Client"
 
     def __repr__(self) -> str:
-        return (
-            f"<ideenergy.Client "
-            f"username={self.username}, "
-            f"contract={self.contract or '(none)'}>"
-        )
+        return f"<ideenergy.Client contract_configured={self.contract is not None}>"
 
     #
     # Some properties
@@ -226,10 +222,10 @@ class Client:
         resp = await self._sess.request(method, url, **kwargs)
 
         if resp.status != 200:
-            LOGGER.error(f"{self}: {method} URL '{url}' failed (status={resp.status})")
+            LOGGER.error(f"{self}: {method} request failed (status={resp.status})")
             raise RequestFailedError(resp)
 
-        LOGGER.debug(f"{self}: {method} URL '{url}' success (status={resp.status})")
+        LOGGER.debug(f"{self}: {method} request succeeded (status={resp.status})")
         return resp
 
     async def request_bytes(self, method: str, url: str, **kwargs) -> bytes:
@@ -286,20 +282,22 @@ class Client:
         data = await self.request_json("POST", _LOGIN_ENDPOINT, json=payload)
 
         if not isinstance(data, dict):
-            LOGGER.error(f"{self}: auth failed, invalid data")
+            LOGGER.error(
+                f"{self}: authentication failed because the response was invalid"
+            )
             raise InvalidData(data)
 
         result = data.get("success", "false")
         if result == "userExpired":
-            LOGGER.error(f"{self}: auth failed, user session expired")
+            LOGGER.error(f"{self}: authentication failed because the user is expired")
             raise UserExpiredError(data)
 
         if result != "true":
-            LOGGER.error(f"{self}: auth failed, no success")
+            LOGGER.error(f"{self}: authentication was rejected")
             raise AuthenticationError(data)
 
         self._login_ts = datetime.now()
-        LOGGER.debug(f"{self}: succesfully authenticaded")
+        LOGGER.debug(f"{self}: authenticated successfully")
 
         if self._contract:
             await self._select_contract(self._contract)
@@ -351,7 +349,7 @@ class Client:
             LOGGER.error(f"{self}: contract select failed")
             raise InvalidContractError(contract_id)
 
-        LOGGER.debug(f"{self}: contract '{contract_id}' selected")
+        LOGGER.debug(f"{self}: contract selected")
         self._contract = contract_id
 
     @auth_required
@@ -480,7 +478,7 @@ class RequestFailedError(ClientError):
 
     def __str__(self):
         return (
-            f"Invalid response for '{self.response.url}': "
+            "Invalid response from i-DE: "
             f"{self.response.status} - {self.response.reason}"
         )
 
@@ -490,7 +488,7 @@ class CommandError(ClientError):
         self.data = data
 
     def __str__(self):
-        return f"Command not succesful: {self.data!r}"
+        return "i-DE command was not successful"
 
 
 class AuthenticationError(CommandError):
@@ -502,7 +500,7 @@ class InvalidData(ClientError):
         self.data = data
 
     def __str__(self):
-        return f"Invalid data from server: {self.data!r}"
+        return "Invalid data received from i-DE"
 
 
 class InvalidContractError(ClientError):
@@ -510,12 +508,12 @@ class InvalidContractError(ClientError):
         self.data = data
 
     def __str__(self):
-        return f"Invalid contract code: {self.data!r}"
+        return "Invalid contract code"
 
 
 class UserExpiredError(AuthenticationError):
     def __str__(self):
-        return f"User expired: {self.data!r}"
+        return "i-DE user is expired"
 
 
 def slugify(value: str) -> str:
