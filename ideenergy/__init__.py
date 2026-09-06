@@ -17,6 +17,7 @@
 
 
 from .client import (
+    AuthenticationError,
     Client,
     ClientError,
     CommandError,
@@ -41,6 +42,7 @@ from .types import (
 
 
 __all__ = [
+    "AuthenticationError",
     "Client",
     "ClientError",
     "CommandError",
