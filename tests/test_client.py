@@ -170,5 +170,27 @@ class TestAuthValidityProbe(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sleeps, [0, 300, 600])
 
 
+class TestMeasurePrecision(unittest.IsolatedAsyncioTestCase):
+    async def test_measure_preserves_decimal_accumulated_energy(self):
+        client = Client(None, "x", "y")
+        client._login_ts = datetime.now()
+        payload = {
+            "codSolicitudTGT": "request-id",
+            "valLecturaContador": "123.456",
+            "valMagnitud": "0.789",
+        }
+
+        with patch.object(
+            client,
+            "request_json",
+            new=AsyncMock(return_value=payload),
+        ):
+            measure = await client.get_measure()
+
+        self.assertEqual(measure.accumulate, 123.456)
+        self.assertIsInstance(measure.accumulate, float)
+        self.assertEqual(measure.instant, 0.789)
+
+
 if __name__ == "__main__":
     unittest.main()

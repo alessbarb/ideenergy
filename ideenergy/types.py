@@ -22,7 +22,7 @@ from datetime import datetime
 
 @dataclass
 class Measure:
-    accumulate: int
+    accumulate: float
     instant: float
 
 

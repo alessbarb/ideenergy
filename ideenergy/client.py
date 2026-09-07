@@ -402,7 +402,7 @@ class Client:
             raise CommandError(data)
 
         ret = Measure(
-            accumulate=int(data["valLecturaContador"]),
+            accumulate=float(data["valLecturaContador"]),
             instant=float(data["valMagnitud"]),
         )
         LOGGER.debug(f"{self}: measure fetched succesfully")
