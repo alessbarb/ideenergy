@@ -421,7 +421,11 @@ class Client:
         data = await self.request_json("GET", url, encoding="iso-8859-1")
 
         ret = parsers.parse_historical_consumption(data)
-        ret.periods = [x for x in ret.periods if x.start >= start and x.end <= end]
+        filter_start = parsers.as_local_datetime(start)
+        filter_end = parsers.as_local_datetime(end)
+        ret.periods = [
+            x for x in ret.periods if x.start >= filter_start and x.end <= filter_end
+        ]
 
         LOGGER.debug(f"{self}: historical consumption fetched succesfully")
 

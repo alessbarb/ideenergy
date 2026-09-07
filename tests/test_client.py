@@ -23,6 +23,7 @@ import os
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
+from zoneinfo import ZoneInfo
 
 import aiohttp
 
@@ -76,7 +77,10 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
             ret = await self.client.get_historical_generation(self.start, self.end)
 
             self.assertEqual(len(ret.periods), 168)
-            self.assertEqual(ret.periods[25].start, datetime(2022, 8, 20, 1, 0))
+            self.assertEqual(
+                ret.periods[25].start,
+                datetime(2022, 8, 20, 1, 0, tzinfo=ZoneInfo("Europe/Madrid")),
+            )
             self.assertEqual(ret.periods[25].value, 0.0)
 
     @patch("ideenergy.Client.is_logged", return_value=True)
