@@ -1,0 +1,62 @@
+name: Temporary apply accumulated-measure precision fix
+
+on:
+  push:
+    branches:
+      - fix/measure-decimal-precision
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/measure-decimal-precision
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Preserve decimal accumulated meter readings
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          types = Path("ideenergy/types.py")
+          text = types.read_text()
+          old = "class Measure:\n    accumulate: int\n    instant: float\n"
+          new = "class Measure:\n    accumulate: float\n    instant: float\n"
+          if text.count(old) != 1:
+              raise SystemExit("unexpected Measure type definition")
+          types.write_text(text.replace(old, new))
+
+          client = Path("ideenergy/client.py")
+          text = client.read_text()
+          old = '            accumulate=int(data["valLecturaContador"]),\n'
+          new = '            accumulate=float(data["valLecturaContador"]),\n'
+          if text.count(old) != 1:
+              raise SystemExit("unexpected accumulated reading conversion")
+          client.write_text(text.replace(old, new))
+
+          tests = Path("tests/test_client.py")
+          text = tests.read_text()
+          marker = "class TestMeasurePrecision(unittest.IsolatedAsyncioTestCase):"
+          if marker not in text:
+              text += '''\n\nclass TestMeasurePrecision(unittest.IsolatedAsyncioTestCase):\n    async def test_measure_preserves_decimal_accumulated_energy(self):\n        client = Client(None, "x", "y")\n        client._login_ts = datetime.now()\n        payload = {\n            "codSolicitudTGT": "request-id",\n            "valLecturaContador": "123.456",\n            "valMagnitud": "0.789",\n        }\n\n        with patch.object(\n            client,\n            "request_json",\n            new=AsyncMock(return_value=payload),\n        ):\n            measure = await client.get_measure()\n\n        self.assertEqual(measure.accumulate, 123.456)\n        self.assertIsInstance(measure.accumulate, float)\n        self.assertEqual(measure.instant, 0.789)\n'''
+          tests.write_text(text)
+          PY
+      - run: python -m pip install --upgrade pre-commit
+      - name: Apply repository formatting
+        run: pre-commit run --files ideenergy/types.py ideenergy/client.py tests/test_client.py || true
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ideenergy/types.py ideenergy/client.py tests/test_client.py
+          git commit -m "fix: preserve decimal accumulated meter readings"
+          git push origin HEAD:fix/measure-decimal-precision
