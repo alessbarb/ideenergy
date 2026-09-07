@@ -54,7 +54,7 @@ jobs:
       - name: Validate distributions
         run: python -m twine check dist/*
 
-      - name: Upload artifacts for publishing
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: python-package-distributions
@@ -67,3 +67,4 @@ jobs:
           files: dist/*
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, 'dev') || contains(github.ref_name, 'a') || contains(github.ref_name, 'b') || contains(github.ref_name, 'rc') }}
