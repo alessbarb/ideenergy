@@ -1,0 +1,68 @@
+name: Temporary apply power-demand limits fix
+
+on:
+  push:
+    branches:
+      - fix/power-demand-invalid-limits
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/power-demand-invalid-limits
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Replace assertion with client error contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          client = Path("ideenergy/client.py")
+          text = client.read_text()
+          old = '''    @auth_required\n    async def get_historical_power_demand(self) -> HistoricalPowerDemand:\n        async def _get_available_interval(client):\n            url = _POWER_DEMAND_LIMITS_ENDPOINT\n\n            data = await client.request_json("GET", url)\n            assert data.get("resultado") == "correcto"\n\n            return data\n\n        limits = await _get_available_interval(self)\n        if limits.get("resultado") != "correcto":\n            raise CommandError(limits)\n'''
+          new = '''    @auth_required\n    async def get_historical_power_demand(self) -> HistoricalPowerDemand:\n        limits = await self.request_json("GET", _POWER_DEMAND_LIMITS_ENDPOINT)\n        if limits.get("resultado") != "correcto":\n            raise CommandError(limits)\n'''
+          if text.count(old) != 1:
+              raise SystemExit("unexpected power-demand limits block")
+          client.write_text(text.replace(old, new))
+
+          tests = Path("tests/test_client.py")
+          text = tests.read_text()
+          marker = "test_power_demand_invalid_limits_raise_command_error"
+          if marker not in text:
+              insert = '''\n    async def test_power_demand_invalid_limits_raise_command_error(self):\n        self.client._login_ts = datetime.now()\n        invalid_limits = {"resultado": "error"}\n        self.client.request_json = AsyncMock(return_value=invalid_limits)\n\n        with self.assertRaises(CommandError):\n            await self.client.get_historical_power_demand()\n\n        self.client.request_json.assert_awaited_once_with(\n            "GET", _POWER_DEMAND_LIMITS_ENDPOINT\n        )\n'''
+              anchor = '\n\nif __name__ == "__main__":\n'
+              if anchor not in text:
+                  raise SystemExit("test module footer not found")
+              text = text.replace(anchor, insert + anchor)
+          tests.write_text(text)
+
+          changelog = Path("CHANGELOG.md")
+          text = changelog.read_text()
+          bullet = "- Report invalid power-demand limits responses through the public `CommandError` contract instead of leaking an `AssertionError`.\n"
+          anchor = "- Keep power-demand retrieval under one authentication/circuit-breaker boundary so intermediate requests cannot reset consecutive failure tracking.\n"
+          if bullet not in text:
+              if anchor not in text:
+                  raise SystemExit("changelog power-demand anchor not found")
+              text = text.replace(anchor, anchor + bullet)
+          changelog.write_text(text)
+          PY
+      - run: python -m pip install --upgrade pre-commit
+      - name: Apply repository formatting
+        run: pre-commit run --files ideenergy/client.py tests/test_client.py CHANGELOG.md || true
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ideenergy/client.py tests/test_client.py CHANGELOG.md
+          git commit -m "fix: validate power-demand limits explicitly"
+          git push origin HEAD:fix/power-demand-invalid-limits
