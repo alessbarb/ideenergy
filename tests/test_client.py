@@ -170,10 +170,6 @@ class TestAuthValidityProbe(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sleeps, [0, 300, 600])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestMeasurePrecision(unittest.IsolatedAsyncioTestCase):
     async def test_measure_preserves_decimal_accumulated_energy(self):
         client = Client(None, "x", "y")
@@ -194,3 +190,7 @@ class TestMeasurePrecision(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(measure.accumulate, 123.456)
         self.assertIsInstance(measure.accumulate, float)
         self.assertEqual(measure.instant, 0.789)
+
+
+if __name__ == "__main__":
+    unittest.main()
