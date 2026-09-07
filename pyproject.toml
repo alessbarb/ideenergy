@@ -2,7 +2,7 @@
 
 [project]
 name = "ideenergy"
-version = "2.0.1dev3"
+version = "2.0.1.dev4"
 dependencies = [
     "aiohttp <4.0,>=3.8",
     "dotenv>=0.9.9",
@@ -10,6 +10,9 @@ dependencies = [
 ]
 authors = [
   {name = "Luis López", email = "luis@cuarentaydos.com"},
+]
+maintainers = [
+  {name = "Alessandro Barbagallo"},
 ]
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -24,9 +27,10 @@ requires-python = ">=3.11"
 ideenergy = "ideenergy.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/ldotlopez/ideenergy"
-Issues = "https://github.com/ldotlopez/ideenergy/issues"
-Repository = "https://github.com/ldotlopez/ideenergy.git"
+Homepage = "https://github.com/alessbarb/ideenergy"
+Issues = "https://github.com/alessbarb/ideenergy/issues"
+Repository = "https://github.com/alessbarb/ideenergy.git"
+Upstream = "https://github.com/ldotlopez/ideenergy"
 
 [build-system]
 requires = [
