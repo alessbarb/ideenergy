@@ -471,7 +471,6 @@ class Client:
 
     @auth_required
     async def get_historical_power_demand(self) -> HistoricalPowerDemand:
-        @auth_required
         async def _get_available_interval(client):
             url = _POWER_DEMAND_LIMITS_ENDPOINT
 
