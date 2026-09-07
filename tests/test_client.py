@@ -191,6 +191,18 @@ class TestMeasurePrecision(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(measure.accumulate, float)
         self.assertEqual(measure.instant, 0.789)
 
+    async def test_power_demand_invalid_limits_raise_command_error(self):
+        self.client._login_ts = datetime.now()
+        invalid_limits = {"resultado": "error"}
+        self.client.request_json = AsyncMock(return_value=invalid_limits)
+
+        with self.assertRaises(CommandError):
+            await self.client.get_historical_power_demand()
+
+        self.client.request_json.assert_awaited_once_with(
+            "GET", _POWER_DEMAND_LIMITS_ENDPOINT
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

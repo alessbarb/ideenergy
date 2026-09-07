@@ -471,15 +471,7 @@ class Client:
 
     @auth_required
     async def get_historical_power_demand(self) -> HistoricalPowerDemand:
-        async def _get_available_interval(client):
-            url = _POWER_DEMAND_LIMITS_ENDPOINT
-
-            data = await client.request_json("GET", url)
-            assert data.get("resultado") == "correcto"
-
-            return data
-
-        limits = await _get_available_interval(self)
+        limits = await self.request_json("GET", _POWER_DEMAND_LIMITS_ENDPOINT)
         if limits.get("resultado") != "correcto":
             raise CommandError(limits)
 
