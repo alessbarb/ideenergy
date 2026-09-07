@@ -87,6 +87,28 @@ class TestCircuitBreaker(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.client._circuit_open_until)
         self.client.request_json.assert_awaited_once()
 
+    async def test_power_demand_failures_share_outer_circuit_boundary(self):
+        limits = {
+            "resultado": "correcto",
+            "fecMax": "07-09-202600:00:00",
+        }
+        error = RequestFailedError(failed_response(503))
+        self.client.request_json = AsyncMock(
+            side_effect=[limits, error, limits, error, limits, error]
+        )
+
+        for _ in range(3):
+            with self.assertRaises(RequestFailedError):
+                await self.client.get_historical_power_demand()
+
+        self.assertEqual(self.client._circuit_failure_count, 3)
+        self.assertEqual(self.client.request_json.await_count, 6)
+
+        with self.assertRaises(CircuitOpenError):
+            await self.client.get_historical_power_demand()
+
+        self.assertEqual(self.client.request_json.await_count, 6)
+
 
 if __name__ == "__main__":
     unittest.main()
