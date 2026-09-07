@@ -11,6 +11,7 @@ Maintained-fork development release.
 - Add a fail-fast circuit breaker after repeated 401/403/429/5xx failures.
 - Reset the circuit after a successful authenticated operation or after the cooldown expires.
 - Keep power-demand retrieval under one authentication/circuit-breaker boundary so intermediate requests cannot reset consecutive failure tracking.
+- Report invalid power-demand limits responses through the public `CommandError` contract instead of leaking an `AssertionError`.
 - Deliberately avoid artificial keepalive traffic as a workaround for i-DE SMS 2FA because the private API has no documented OTP challenge contract and excessive automated access can lead to account blocking.
 
 ### Data correctness
