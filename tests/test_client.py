@@ -27,9 +27,9 @@ from zoneinfo import ZoneInfo
 
 import aiohttp
 
-from ideenergy import Client, MockClient
+from ideenergy import Client, CommandError, MockClient
 from ideenergy.cli import probe_auth_validity
-from ideenergy.client import _LOGIN_ENDPOINT
+from ideenergy.client import _LOGIN_ENDPOINT, _POWER_DEMAND_LIMITS_ENDPOINT
 
 FIXTURES_DIR = os.path.dirname(__file__) + "/fixtures"
 
