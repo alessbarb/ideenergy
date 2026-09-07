@@ -31,9 +31,7 @@ class HistoricalDstTests(unittest.TestCase):
         )
 
     def test_spring_forward_skips_nonexistent_local_hour(self):
-        historical = parse_historical_consumption(
-            consumption_payload("29-03-2026", 23)
-        )
+        historical = parse_historical_consumption(consumption_payload("29-03-2026", 23))
 
         self.assertEqual(len(historical.periods), 23)
         self.assert_real_hour_spacing(historical.periods)
@@ -49,9 +47,7 @@ class HistoricalDstTests(unittest.TestCase):
         self.assertEqual((last.end.day, last.end.hour), (30, 0))
 
     def test_autumn_fallback_preserves_both_local_two_oclock_hours(self):
-        historical = parse_historical_consumption(
-            consumption_payload("25-10-2026", 25)
-        )
+        historical = parse_historical_consumption(consumption_payload("25-10-2026", 25))
 
         self.assertEqual(len(historical.periods), 25)
         self.assert_real_hour_spacing(historical.periods)

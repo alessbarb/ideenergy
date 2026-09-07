@@ -35,6 +35,13 @@ from .types import (
 LOCAL_TZ = ZoneInfo("Europe/Madrid")
 
 
+def as_local_datetime(dt: datetime) -> datetime:
+    """Interpret legacy naive values locally while preserving aware values."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=LOCAL_TZ)
+    return dt.astimezone(LOCAL_TZ)
+
+
 def _elapsed_hour_period(base_dt: datetime, idx: int) -> tuple[datetime, datetime]:
     """Return one real elapsed hour from a Spanish local-time origin.
 
@@ -44,12 +51,7 @@ def _elapsed_hour_period(base_dt: datetime, idx: int) -> tuple[datetime, datetim
     to UTC first, advance in real elapsed hours, then convert each boundary
     back to Europe/Madrid so ``fold`` and offsets remain correct.
     """
-    if base_dt.tzinfo is None:
-        base_local = base_dt.replace(tzinfo=LOCAL_TZ)
-    else:
-        base_local = base_dt.astimezone(LOCAL_TZ)
-
-    base_utc = base_local.astimezone(UTC)
+    base_utc = as_local_datetime(base_dt).astimezone(UTC)
     start = (base_utc + timedelta(hours=idx)).astimezone(LOCAL_TZ)
     end = (base_utc + timedelta(hours=idx + 1)).astimezone(LOCAL_TZ)
     return start, end
